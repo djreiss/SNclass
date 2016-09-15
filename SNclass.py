@@ -9,6 +9,7 @@ from scipy.optimize import minimize
 
 filters = [b'g', b'r', b'i', b'z']  # , b'Y']
 
+__all__ = ("SNClass")
 
 def SNPhotCC_Parser(filename):
     '''
@@ -26,7 +27,8 @@ def SNPhotCC_Parser(filename):
     * sim_z is a float containing the redshift of the supernova
     * obs is a pandas dataframe containing [observation time, filter, fluxes, fluxe errors]
     '''
-    survey = snid = ra = dec = mwebv = hostid = hostz = spec = sim_type = sim_z = None
+
+    survey = snid = ra = decl = mwebv = hostid = hostz = spec = sim_type = sim_z = None
     with gzip.open(filename, 'rb') as f:
         for lineno,line in enumerate(f):
             s = line.split(':')
@@ -61,7 +63,7 @@ def SNPhotCC_Parser(filename):
                         usecols=[1,2,4,5,6,7,8,9])
     metadata = {'survey': survey, 'snid': snid, 'sn_type': sn_type, 'sim_type': sim_type,
                 'sim_z': sim_z, 'ra': ra, 'decl': decl,
-                'mwebv': mwebv, 'hostid': hostid, 'hostz': hostz, 'spec': spec}
+                'mwebv': mwebv, 'hostid': hostid, 'hostz': hostz, 'spec': spec, 'filename': filename}
     return obs, metadata
 
 
@@ -70,6 +72,7 @@ def SNPhot_fitter_filt(obs, filt=b'r', verbose=False, kernelMultiplier=5.):
     if isinstance(obs, str):  # assume it's a filename
         fname = obs
         obs, metadata = SNPhotCC_Parser(obs)
+        metadata['filename'] = fname
 
     df = obs[obs.FLT == filt]
     #print fname, filt, df.shape
@@ -131,16 +134,18 @@ def SNPhot_plotter_filt(obs, gp, filt=b'r'):
     x = df.MJD.values
     y = df.FLUXCAL.values
     dy = df.FLUXCALERR.values
+    colors = {b'g':'g', b'r':'r', b'i':'c', b'z':'m'}
 
     if gp is not None:
         x_pred = np.linspace(x.min()-100., x.max()+100., 1000)
         pred, pred_var = gp.predict(y, x_pred, return_var=True)
         #pred, pred_cov = gp.predict(y, x_pred, return_cov=True)
-        plt.fill_between(x_pred, pred - np.sqrt(pred_var), pred + np.sqrt(pred_var), color="k", alpha=0.2)
+        plt.fill_between(x_pred, pred - np.sqrt(pred_var), pred + np.sqrt(pred_var), color=colors[filt], alpha=0.2)
         plt.plot(x_pred, pred, "k", lw=1.5, alpha=0.5)
-
+        #plt.ylim((pred-np.sqrt(pred_var)*1.1).min(), (pred+np.sqrt(pred_var)*1.1).max())
+    #else:
+    plt.ylim((y-dy*1.1).min(), (y+dy*1.1).max())
     plt.errorbar(x, y, yerr=dy, fmt=".k", capsize=0)
-    plt.ylim((y-dy*2.).min(), (y+dy*2.).max())
     plt.xlim(x.min()-30, x.max()+30)
     plt.title(filt)
     return plt
@@ -155,3 +160,13 @@ def SNPhot_plotter(obs, gps):
             gp = gps[filt]
         SNPhot_plotter_filt(obs, gp, filt)
 
+
+class SNclass(object):
+    def __init__(self, filename):
+        self.obs, self.metadata, self.gps = SNPhot_fitter(filename)
+
+    def fit(self, verbose=False):
+        self.gps = SNPhot_fitter(self.obs, verbose=verbose)
+
+    def plot(self):
+        SNPhot_plotter(self.obs, self.gps)
