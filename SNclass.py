@@ -67,7 +67,7 @@ def SNPhotCC_Parser(filename):
     return obs, metadata
 
 
-def SNPhot_fitter_filt(obs, filt=b'r', verbose=False, kernelMultiplier=5.):
+def SNPhot_fitter_filt(obs, filt=b'r', verbose=False, kernelMultiplier=1.):
     fname = None
     if isinstance(obs, str):  # assume it's a filename
         fname = obs
@@ -80,7 +80,7 @@ def SNPhot_fitter_filt(obs, filt=b'r', verbose=False, kernelMultiplier=5.):
     y = df.FLUXCAL.values
     dy = df.FLUXCALERR.values
 
-    kernel = kernelMultiplier * np.var(y) * kernels.ExpSquaredKernel(100.)
+    kernel = kernelMultiplier * np.var(y) * kernels.ExpSquaredKernel(x.max()-x.min())
     gp = george.GP(kernel)
     gp.compute(x, np.abs(dy))
 
@@ -119,13 +119,17 @@ def SNPhot_fitter(obs, verbose=False):
         except:
             try:
                 print 'ERROR(1): %s %s -- trying again' % (fname, filt)
-                gps[filt] = SNPhot_fitter_filt(obs, filt, verbose=verbose, kernelMultiplier=10.)
+                gps[filt] = SNPhot_fitter_filt(obs, filt, verbose=verbose, kernelMultiplier=5.)
             except:
                 try:
                     print 'ERROR(2): %s %s -- trying again' % (fname, filt)
-                    gps[filt] = SNPhot_fitter_filt(obs, filt, verbose=verbose, kernelMultiplier=25.)
+                    gps[filt] = SNPhot_fitter_filt(obs, filt, verbose=verbose, kernelMultiplier=10.)
                 except:
-                    print 'ERROR FATAL: %s %s' % (fname, filt)
+                    try:
+                        print 'ERROR(3): %s %s -- trying again' % (fname, filt)
+                        gps[filt] = SNPhot_fitter_filt(obs, filt, verbose=verbose, kernelMultiplier=25.)
+                    except:
+                        print 'ERROR FATAL: %s %s' % (fname, filt)
     return obs, metadata, gps
 
 
@@ -146,7 +150,7 @@ def SNPhot_plotter_filt(obs, gp, filt=b'r'):
     #else:
     plt.ylim((y-dy*1.1).min(), (y+dy*1.1).max())
     plt.errorbar(x, y, yerr=dy, fmt=".k", capsize=0)
-    plt.xlim(x.min()-30, x.max()+30)
+    plt.xlim(x.min()-100, x.max()+100)
     plt.title(filt)
     return plt
 
@@ -160,13 +164,61 @@ def SNPhot_plotter(obs, gps):
             gp = gps[filt]
         SNPhot_plotter_filt(obs, gp, filt)
 
+def SNPhot_normalizer(obs, gps=None, ref_filter=b'r', z=None, metadata=None):
+    # First, get time of peak brightnes in filter ref_filter, then normalize time 
+    # (time-dilate) and then normalize fluxes vs. peak flux in ref_filter.
+    filt = ref_filter
+    df = obs[obs.FLT == filt]
+    x = df.MJD.values
+    y = df.FLUXCAL.values
+
+    if gps is None:
+        _, _, gps = SNPhot_fitter(obs, verbose=False)
+
+    if gps[ref_filter] is not None:
+        x_pred = np.linspace(x.min()-100., x.max()+100., 1000)
+        pred, pred_var = gps[ref_filter].predict(y, x_pred, return_var=True)
+    else:
+        print "ERROR(4): No light curve in band", ref_filter
+
+    if z is None and metadata is not None:
+        z = metadata['hostz']
+    if z is None:
+        z = 0.0
+        print "ERROR(5): No redshift!"
+
+    argmax = np.argmax(pred)
+    obs_norm = obs.copy()
+    obs_norm.MJD -= x_pred[argmax]
+    obs_norm.MJD *= (1. + z[0])  # need to propagate the error in z as well.
+
+    obs_norm.FLUXCAL /= pred[argmax]
+    obs_norm.FLUXCALERR /= pred[argmax]
+    _, _, gps_norm = SNPhot_fitter(obs_norm, verbose=False)
+
+    return obs_norm, gps_norm
+
 
 class SNclass(object):
     def __init__(self, filename):
-        self.obs, self.metadata, self.gps = SNPhot_fitter(filename)
+        self.obs, self.metadata = SNPhotCC_Parser(filename)
+        self.gps = self.gps_norm = self.obs_norm = None
+        self.normalize()
 
     def fit(self, verbose=False):
-        self.gps = SNPhot_fitter(self.obs, verbose=verbose)
+        _, _, self.gps = SNPhot_fitter(self.obs, verbose=verbose)
 
-    def plot(self):
-        SNPhot_plotter(self.obs, self.gps)
+    def plot(self, normalized=False):
+        obs_plot, gps_plot = self.obs, self.gps
+        if normalized:
+            if self.obs_norm is None:
+                self.normalize()
+            obs_plot, gps_plot = self.obs_norm, self.gps_norm
+        else:
+            if self.gps is None:
+                self.fit()
+            obs_plot, gps_plot = self.obs, self.gps
+        SNPhot_plotter(obs_plot, gps_plot)
+
+    def normalize(self, ref_filter=b'r'):
+        self.obs_norm, self.gps_norm = SNPhot_normalizer(self.obs, self.gps, ref_filter=ref_filter, metadata=self.metadata)
