@@ -85,7 +85,7 @@ def SNPhot_fitter_filt(obs, filt=b'r', verbose=False, kernelMultiplier=1.):
     gp.compute(x, np.abs(dy))
 
     if verbose:
-        print("Initial ln-likelihood: {0:.2f}".format(gp.lnlikelihood(y)))
+        print(filt + "\nInitial ln-likelihood: {0:.2f}".format(gp.lnlikelihood(y)))
 
     def neg_ln_like(p):
         gp.set_vector(p)
@@ -118,18 +118,18 @@ def SNPhot_fitter(obs, verbose=False):
             gps[filt] = SNPhot_fitter_filt(obs, filt, verbose=verbose)
         except:
             try:
-                print 'ERROR(1): %s %s -- trying again' % (fname, filt)
+                if verbose: print 'ERROR(1): %s %s -- trying again' % (filt, fname)
                 gps[filt] = SNPhot_fitter_filt(obs, filt, verbose=verbose, kernelMultiplier=5.)
             except:
                 try:
-                    print 'ERROR(2): %s %s -- trying again' % (fname, filt)
+                    if verbose: print 'ERROR(2): %s %s -- trying again' % (filt, fname)
                     gps[filt] = SNPhot_fitter_filt(obs, filt, verbose=verbose, kernelMultiplier=10.)
                 except:
                     try:
-                        print 'ERROR(3): %s %s -- trying again' % (fname, filt)
+                        if verbose: print 'ERROR(3): %s %s -- trying again' % (filt, fname)
                         gps[filt] = SNPhot_fitter_filt(obs, filt, verbose=verbose, kernelMultiplier=25.)
                     except:
-                        print 'ERROR FATAL: %s %s' % (fname, filt)
+                        print 'ERROR FATAL: %s %s' % (filt, fname)
     return obs, metadata, gps
 
 
@@ -140,15 +140,16 @@ def SNPhot_plotter_filt(obs, gp, filt=b'r'):
     dy = df.FLUXCALERR.values
     colors = {b'g':'g', b'r':'r', b'i':'c', b'z':'m'}
 
+    pred = pred_var = 0.
     if gp is not None:
         x_pred = np.linspace(x.min()-100., x.max()+100., 1000)
         pred, pred_var = gp.predict(y, x_pred, return_var=True)
         #pred, pred_cov = gp.predict(y, x_pred, return_cov=True)
-        plt.fill_between(x_pred, pred - np.sqrt(pred_var), pred + np.sqrt(pred_var), color=colors[filt], alpha=0.2)
+        pred_sig = np.sqrt(np.abs(pred_var))
+        plt.fill_between(x_pred, pred - pred_sig, pred + pred_sig, color=colors[filt], alpha=0.2)
         plt.plot(x_pred, pred, "k", lw=1.5, alpha=0.5)
-        #plt.ylim((pred-np.sqrt(pred_var)*1.1).min(), (pred+np.sqrt(pred_var)*1.1).max())
-    #else:
-    plt.ylim((y-dy*1.1).min(), (y+dy*1.1).max())
+    plt.ylim(np.append(np.append(y-dy*1.1, [0]), [pred-pred_sig]).min(),
+             np.append(y+dy*1.1,       [pred+pred_sig]).max())
     plt.errorbar(x, y, yerr=dy, fmt=".k", capsize=0)
     plt.xlim(x.min()-100, x.max()+100)
     plt.title(filt)
@@ -221,4 +222,5 @@ class SNclass(object):
         SNPhot_plotter(obs_plot, gps_plot)
 
     def normalize(self, ref_filter=b'r'):
-        self.obs_norm, self.gps_norm = SNPhot_normalizer(self.obs, self.gps, ref_filter=ref_filter, metadata=self.metadata)
+        self.obs_norm, self.gps_norm = SNPhot_normalizer(self.obs, self.gps,
+                                                         ref_filter=ref_filter, metadata=self.metadata)
