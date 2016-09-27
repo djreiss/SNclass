@@ -146,12 +146,12 @@ def SNPhot_plotter_filt(obs, gp, filt=b'r'):
         pred, pred_var = gp.predict(y, x_pred, return_var=True)
         #pred, pred_cov = gp.predict(y, x_pred, return_cov=True)
         pred_sig = np.sqrt(np.abs(pred_var))
-        plt.fill_between(x_pred, pred - pred_sig, pred + pred_sig, color=colors[filt], alpha=0.2)
+        plt.fill_between(x_pred, pred - 2*pred_sig, pred + 2*pred_sig, color=colors[filt], alpha=0.2)
         plt.plot(x_pred, pred, "k", lw=1.5, alpha=0.5)
     plt.ylim(np.append(np.append(y-dy*1.1, [0]), [pred-pred_sig]).min(),
              np.append(y+dy*1.1,       [pred+pred_sig]).max())
     plt.errorbar(x, y, yerr=dy, fmt=".k", capsize=0)
-    plt.xlim(x.min()-100, x.max()+100)
+    plt.xlim(x.min()-30, x.max()+30)
     plt.title(filt)
     return plt
 
