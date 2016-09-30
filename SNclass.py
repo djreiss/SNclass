@@ -67,7 +67,7 @@ def SNPhotCC_Parser(filename):
     return obs, metadata
 
 
-def SNPhot_fitter_filt(obs, filt=b'r', verbose=False, kernelMultiplier=1.):
+def SNPhot_fitter_filt(obs, filt=b'r', verbose=False, kernelMultiplier=1., metric=30.):
     fname = None
     if isinstance(obs, str):  # assume it's a filename
         fname = obs
@@ -80,7 +80,7 @@ def SNPhot_fitter_filt(obs, filt=b'r', verbose=False, kernelMultiplier=1.):
     y = df.FLUXCAL.values
     dy = df.FLUXCALERR.values
 
-    kernel = kernelMultiplier * np.var(y) * kernels.ExpSquaredKernel(x.max()-x.min())
+    kernel = kernelMultiplier * np.var(y) * kernels.ExpSquaredKernel(metric) #x.max()-x.min())
     gp = george.GP(kernel)
     gp.compute(x, np.abs(dy))
 
