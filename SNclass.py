@@ -11,7 +11,7 @@ filters = [b'g', b'r', b'i', b'z']  # , b'Y']
 
 __all__ = ("SNClass")
 
-def SNPhotCC_Parser(filename):
+def SNPhotCC_Parser(filename, zipped=True):
     '''
     Reads and returns supernovae data and metadata.
     * filename is a string containing the path to the supernovae light curve data
@@ -29,7 +29,11 @@ def SNPhotCC_Parser(filename):
     '''
 
     survey = snid = ra = decl = mwebv = hostid = hostz = spec = sim_type = sim_z = None
-    with gzip.open(filename, 'rb') as f:
+    if zipped:
+        operator = gzip.open
+    else:
+        operator = open
+    with operator(filename, 'rb') as f:
         for lineno,line in enumerate(f):
             s = line.split(':')
             if len(s) <= 0:
@@ -201,8 +205,8 @@ def SNPhot_normalizer(obs, gps=None, ref_filter=b'r', z=None, metadata=None):
 
 
 class SNclass(object):
-    def __init__(self, filename):
-        self.obs, self.metadata = SNPhotCC_Parser(filename)
+    def __init__(self, filename, zipped=True):
+        self.obs, self.metadata = SNPhotCC_Parser(filename, zipped)
         self.gps = self.gps_norm = self.obs_norm = None
         self.normalize()
 
